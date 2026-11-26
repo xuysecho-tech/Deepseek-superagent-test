@@ -22,4 +22,5 @@ Deepseek-superagent-test
 - 深色 / 浅色主题：默认跟随系统偏好，切换后记住选择
 - 数据保存在浏览器 localStorage，刷新后不丢失
 - 响应式布局：窄屏下侧边栏变为顶部导航，任务弹窗自适应
+A in group-2
 B in group-1
