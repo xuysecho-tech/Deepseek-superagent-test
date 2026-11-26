@@ -3,16 +3,31 @@
 
   const STORAGE_KEY = "simple-todo:v1";
   const THEME_KEY = "simple-todo:theme";
-  const FILTERS = ["all", "active", "completed"];
-  const DRAG_THRESHOLD = 5;
   const TOAST_DURATION = 6000;
+  const DAY_MS = 86400000;
+  const PRIORITIES = ["low", "medium", "high"];
+  const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+  const PRIORITY_LABEL = { low: "低", medium: "中", high: "高" };
+  const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
-  const GRIP_ICON = `
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
-      <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
-      <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
-    </svg>`;
+  const VIEW_META = {
+    today: { eyebrow: "Today", title: "今天" },
+    tomorrow: { eyebrow: "Tomorrow", title: "明天" },
+    next7: { eyebrow: "Next 7 days", title: "未来七天" },
+    all: { eyebrow: "All tasks", title: "全部待办" },
+    overdue: { eyebrow: "Overdue", title: "已逾期" },
+    completed: { eyebrow: "Completed", title: "已完成" },
+  };
+
+  const EMPTY_COPY = {
+    today: { title: "今天还没有待办", text: "点击「添加」安排今天的第一件事。" },
+    tomorrow: { title: "明天还没有安排", text: "提前计划，明天更从容。" },
+    next7: { title: "未来七天没有待办", text: "把接下来要做的事加进来吧。" },
+    all: { title: "还没有待办", text: "添加第一件，让一切井井有条。" },
+    overdue: { title: "没有逾期任务", text: "保持得很好，继续加油。" },
+    completed: { title: "还没有已完成", text: "完成任务后会出现在这里。" },
+  };
+
   const PENCIL_ICON = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z"/>
@@ -26,39 +41,44 @@
       <path d="M10 11v5M14 11v5"/>
     </svg>`;
 
-  const EMPTY_COPY = {
-    all: { title: "还没有待办", text: "添加第一件，让今天井井有条。" },
-    active: { title: "全部完成啦", text: "没有未完成的待办，去喝杯水吧。" },
-    completed: { title: "暂无已完成", text: "完成一件待办后会出现在这里。" },
-  };
-  const SEARCH_EMPTY = { title: "没有匹配的待办", text: "换个关键词试试，或按 Esc 关闭搜索。" };
-
   const els = {
-    form: document.querySelector("#todo-form"),
-    input: document.querySelector("#todo-input"),
-    list: document.querySelector("#todo-list"),
+    navItems: Array.from(document.querySelectorAll("[data-view]")),
+    navCounts: Array.from(document.querySelectorAll("[data-view-count]")),
+    themeToggle: document.querySelector("#theme-toggle"),
+    themeLabel: document.querySelector("#theme-label"),
+    themeMeta: document.querySelector("#theme-color"),
+    searchInput: document.querySelector("#search-input"),
+    searchClear: document.querySelector("#search-clear"),
+    addTask: document.querySelector("#add-task"),
+    eyebrow: document.querySelector("#view-eyebrow"),
+    title: document.querySelector("#view-title"),
+    subtitle: document.querySelector("#view-subtitle"),
+    mainContent: document.querySelector("#main-content"),
+    list: document.querySelector("#task-list"),
     empty: document.querySelector("#empty-state"),
     emptyTitle: document.querySelector("#empty-title"),
     emptyText: document.querySelector("#empty-text"),
-    filters: Array.from(document.querySelectorAll("[data-filter]")),
-    counts: {
-      all: document.querySelector('[data-count="all"]'),
-      active: document.querySelector('[data-count="active"]'),
-      completed: document.querySelector('[data-count="completed"]'),
-    },
-    clear: document.querySelector("#clear-completed"),
-    searchToggle: document.querySelector("#search-toggle"),
-    searchBar: document.querySelector("#search-bar"),
-    searchInput: document.querySelector("#search-input"),
-    searchClear: document.querySelector("#search-clear"),
-    themeToggle: document.querySelector("#theme-toggle"),
-    themeMeta: document.querySelector("#theme-color"),
-    progress: document.querySelector("#progress"),
-    progressRing: document.querySelector("#progress-ring"),
-    progressValue: document.querySelector("#progress-value"),
-    summary: document.querySelector("#summary"),
-    today: document.querySelector("#today"),
+    listCount: document.querySelector("#list-count"),
+    clearCompleted: document.querySelector("#clear-completed"),
+    todayCompleted: document.querySelector("#today-completed"),
+    todayCompletedCount: document.querySelector("#today-completed-count"),
+    todayCompletedList: document.querySelector("#today-completed-list"),
+    progressText: document.querySelector("#today-progress-text"),
+    progressFill: document.querySelector("#today-progress-fill"),
+    progressTrack: document.querySelector("#today-progress-track"),
     status: document.querySelector("#status"),
+    dialog: document.querySelector("#task-dialog"),
+    dialogTitle: document.querySelector("#dialog-title"),
+    dialogSubmit: document.querySelector("#dialog-submit"),
+    dialogForm: document.querySelector("#task-form"),
+    dialogClose: document.querySelector("#dialog-close"),
+    dialogCancel: document.querySelector("#dialog-cancel"),
+    titleInput: document.querySelector("#task-title"),
+    titleError: document.querySelector("#title-error"),
+    notesInput: document.querySelector("#task-notes"),
+    dateInput: document.querySelector("#task-date"),
+    quickDateButtons: Array.from(document.querySelectorAll("[data-quick-date]")),
+    priorityInputs: Array.from(document.querySelectorAll('input[name="priority"]')),
     toast: document.querySelector("#toast"),
     toastText: document.querySelector("#toast-text"),
     toastUndo: document.querySelector("#toast-undo"),
@@ -66,15 +86,15 @@
 
   const state = {
     todos: loadTodos(),
-    filter: "all",
+    view: "today",
     query: "",
-    searchOpen: false,
-    editingId: null,
   };
 
+  let editingId = null;
   let undoState = null;
   let undoTimer = null;
-  let dragState = null;
+
+  // ---- 基础工具 ----
 
   function uid() {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -83,15 +103,89 @@
     return `todo-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
+  function dateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function parseDateKey(key) {
+    const [year, month, day] = key.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  function isValidDateKey(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  }
+
+  function addDays(key, amount) {
+    const date = parseDateKey(key);
+    date.setDate(date.getDate() + amount);
+    return dateKey(date);
+  }
+
+  function daysFromToday(key) {
+    const today = parseDateKey(dateKey());
+    return Math.round((parseDateKey(key) - today) / DAY_MS);
+  }
+
+  function formatShort(key) {
+    const date = parseDateKey(key);
+    const now = new Date();
+    if (date.getFullYear() === now.getFullYear()) {
+      return `${date.getMonth() + 1}月${date.getDate()}日`;
+    }
+    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+  }
+
+  function formatFull(key) {
+    const date = parseDateKey(key);
+    const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date);
+    return `${date.getMonth() + 1}月${date.getDate()}日 · ${weekday}`;
+  }
+
+  function weekdayName(key) {
+    return WEEKDAYS[parseDateKey(key).getDay()];
+  }
+
+  function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+
+  function isTypingTarget(target) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    if (target.tagName === "TEXTAREA") return true;
+    if (target.tagName !== "INPUT") return false;
+    return ["text", "search", "email", "number", "password", "tel", "url"].includes(target.type);
+  }
+
+  // ---- 数据 ----
+
   function loadTodos() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
+      const now = Date.now();
       return parsed
         .filter((todo) => todo && typeof todo.id === "string" && typeof todo.title === "string" && todo.title.trim() !== "")
-        .map((todo) => ({ id: todo.id, title: todo.title.trim(), done: todo.done === true }));
+        .map((todo, index) => ({
+          id: todo.id,
+          title: todo.title.trim(),
+          notes: typeof todo.notes === "string" ? todo.notes : "",
+          dueDate: isValidDateKey(todo.dueDate) ? todo.dueDate : null,
+          priority: PRIORITIES.includes(todo.priority) ? todo.priority : "medium",
+          done: todo.done === true,
+          createdAt: Number.isFinite(todo.createdAt) ? todo.createdAt : now - (parsed.length - index),
+          completedAt: Number.isFinite(todo.completedAt) ? todo.completedAt : todo.done === true ? now : null,
+        }));
     } catch (error) {
       return [];
     }
@@ -105,6 +199,8 @@
     }
   }
 
+  // ---- 主题 ----
+
   function storedTheme() {
     try {
       const theme = localStorage.getItem(THEME_KEY);
@@ -116,6 +212,7 @@
 
   function applyTheme(theme, persist) {
     document.documentElement.dataset.theme = theme;
+    const dark = theme === "dark";
     if (persist) {
       try {
         localStorage.setItem(THEME_KEY, theme);
@@ -123,11 +220,10 @@
         // 主题仍会立即生效，只是无法记住选择。
       }
     }
-    if (els.themeToggle) {
-      els.themeToggle.setAttribute("aria-label", theme === "dark" ? "切换到浅色模式" : "切换到深色模式");
-    }
+    els.themeLabel.textContent = dark ? "浅色模式" : "深色模式";
+    els.themeToggle.setAttribute("aria-label", dark ? "切换到浅色模式" : "切换到深色模式");
     if (els.themeMeta) {
-      els.themeMeta.setAttribute("content", theme === "dark" ? "#0e1016" : "#f3f4fa");
+      els.themeMeta.setAttribute("content", dark ? "#0b0d13" : "#f3f4fa");
     }
   }
 
@@ -143,6 +239,322 @@
     }
   }
 
+  // ---- 任务与视图 ----
+
+  function activeTasks() {
+    return state.todos.filter((todo) => !todo.done);
+  }
+
+  function completedTodayTasks() {
+    const today = dateKey();
+    return state.todos.filter(
+      (todo) =>
+        todo.done &&
+        ((Number.isFinite(todo.completedAt) && dateKey(new Date(todo.completedAt)) === today) || todo.dueDate === today),
+    );
+  }
+
+  function viewCounts() {
+    const today = dateKey();
+    const tomorrow = addDays(today, 1);
+    const weekEnd = addDays(today, 6);
+    const active = activeTasks();
+    const count = (predicate) => active.filter(predicate).length;
+    return {
+      today: count((todo) => todo.dueDate === today),
+      tomorrow: count((todo) => todo.dueDate === tomorrow),
+      next7: count((todo) => Boolean(todo.dueDate) && todo.dueDate >= today && todo.dueDate <= weekEnd),
+      all: active.length,
+      overdue: count((todo) => Boolean(todo.dueDate) && todo.dueDate < today),
+      completed: state.todos.filter((todo) => todo.done).length,
+    };
+  }
+
+  function viewTasks(view) {
+    const today = dateKey();
+    const tomorrow = addDays(today, 1);
+    const weekEnd = addDays(today, 6);
+    const active = activeTasks();
+    switch (view) {
+      case "today":
+        return active.filter((todo) => todo.dueDate === today);
+      case "tomorrow":
+        return active.filter((todo) => todo.dueDate === tomorrow);
+      case "next7":
+        return active.filter((todo) => Boolean(todo.dueDate) && todo.dueDate >= today && todo.dueDate <= weekEnd);
+      case "overdue":
+        return active.filter((todo) => Boolean(todo.dueDate) && todo.dueDate < today);
+      case "completed":
+        return state.todos.filter((todo) => todo.done);
+      default:
+        return active;
+    }
+  }
+
+  function sortForView(list, view) {
+    return [...list].sort((a, b) => {
+      if (view === "completed") return (b.completedAt || 0) - (a.completedAt || 0);
+      if (a.dueDate !== b.dueDate) {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate < b.dueDate ? -1 : 1;
+      }
+      const priority = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+      if (priority !== 0) return priority;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+  }
+
+  function matchesQuery(todo) {
+    const query = state.query.trim().toLowerCase();
+    if (!query) return true;
+    return todo.title.toLowerCase().includes(query) || todo.notes.toLowerCase().includes(query);
+  }
+
+  function isVisibleInView(todo, view) {
+    if (view === "completed") return todo.done;
+    if (todo.done) return false;
+    const today = dateKey();
+    switch (view) {
+      case "today":
+        return todo.dueDate === today;
+      case "tomorrow":
+        return todo.dueDate === addDays(today, 1);
+      case "next7":
+        return Boolean(todo.dueDate) && todo.dueDate >= today && todo.dueDate <= addDays(today, 6);
+      case "overdue":
+        return Boolean(todo.dueDate) && todo.dueDate < today;
+      default:
+        return true;
+    }
+  }
+
+  function viewForTask(todo) {
+    const today = dateKey();
+    if (!todo.dueDate) return "all";
+    if (todo.dueDate === today) return "today";
+    if (todo.dueDate === addDays(today, 1)) return "tomorrow";
+    if (todo.dueDate < today) return "overdue";
+    if (todo.dueDate <= addDays(today, 6)) return "next7";
+    return "all";
+  }
+
+  function dueChipInfo(todo) {
+    if (!todo.dueDate) return null;
+    const diff = daysFromToday(todo.dueDate);
+    if (todo.done) {
+      if (diff === 0) return { label: "今天", tone: "done" };
+      if (diff === 1) return { label: "明天", tone: "done" };
+      return { label: formatShort(todo.dueDate), tone: "done" };
+    }
+    if (diff === 0) return { label: "今天", tone: "today" };
+    if (diff === 1) return { label: "明天", tone: "soon" };
+    if (diff < 0) return { label: `逾期 ${formatShort(todo.dueDate)}`, tone: "overdue" };
+    if (diff <= 7) return { label: weekdayName(todo.dueDate), tone: "soon" };
+    return { label: formatShort(todo.dueDate), tone: "normal" };
+  }
+
+  function emptyCopyFor(view) {
+    if (state.query.trim()) {
+      return { title: "没有匹配的待办", text: "换个关键词试试，或清空搜索。" };
+    }
+    if (view === "today" && completedTodayTasks().length > 0) {
+      return { title: "今天的待办都完成了", text: "很好，休息一下，或者添加新的安排。" };
+    }
+    return EMPTY_COPY[view] || EMPTY_COPY.all;
+  }
+
+  function subtitleForView(counts) {
+    const today = dateKey();
+    switch (state.view) {
+      case "today":
+        return `${formatFull(today)} · 待完成 ${counts.today} 项`;
+      case "tomorrow":
+        return `${formatFull(addDays(today, 1))} · 待完成 ${counts.tomorrow} 项`;
+      case "next7":
+        return `${formatShort(today)} 至 ${formatShort(addDays(today, 6))} · 待完成 ${counts.next7} 项`;
+      case "overdue":
+        return counts.overdue > 0 ? `共 ${counts.overdue} 项已逾期` : "没有逾期任务";
+      case "completed":
+        return `共 ${counts.completed} 项已完成`;
+      default:
+        return `共 ${counts.all} 项待完成`;
+    }
+  }
+
+  // ---- 渲染 ----
+
+  function createTask(todo, view) {
+    const item = document.createElement("li");
+    item.className = "task";
+    item.dataset.id = todo.id;
+    if (todo.done) item.classList.add("is-done");
+
+    const checkLabel = document.createElement("label");
+    checkLabel.className = "task__check";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "task__checkbox";
+    checkbox.checked = todo.done;
+    checkbox.setAttribute("aria-label", `标记「${todo.title}」为${todo.done ? "未完成" : "已完成"}`);
+    checkbox.addEventListener("change", () => toggleTodo(todo.id));
+
+    const box = document.createElement("span");
+    box.className = "task__box";
+    box.setAttribute("aria-hidden", "true");
+
+    checkLabel.append(checkbox, box);
+
+    const main = document.createElement("div");
+    main.className = "task__main";
+
+    const title = document.createElement("button");
+    title.type = "button";
+    title.className = "task__title";
+    title.textContent = todo.title;
+    title.setAttribute("aria-label", `编辑「${todo.title}」`);
+    title.addEventListener("click", () => openTaskDialog(todo));
+    main.append(title);
+
+    if (todo.notes) {
+      const notes = document.createElement("p");
+      notes.className = "task__notes";
+      notes.textContent = todo.notes;
+      main.append(notes);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "task__meta";
+
+    const chipInfo = dueChipInfo(todo);
+    if (chipInfo) {
+      const chip = document.createElement("span");
+      chip.className = `date-chip date-chip--${chipInfo.tone}`;
+      chip.textContent = chipInfo.label;
+      meta.append(chip);
+    } else if (view === "all") {
+      const chip = document.createElement("span");
+      chip.className = "date-chip date-chip--none";
+      chip.textContent = "未安排";
+      meta.append(chip);
+    }
+
+    if (!todo.done) {
+      const priority = document.createElement("span");
+      priority.className = `priority priority--${todo.priority}`;
+      priority.title = `${PRIORITY_LABEL[todo.priority]}优先级`;
+      priority.innerHTML = `<span class="priority__dot" aria-hidden="true"></span>${PRIORITY_LABEL[todo.priority]}`;
+      meta.append(priority);
+    }
+
+    if (todo.done && todo.completedAt) {
+      const doneChip = document.createElement("span");
+      doneChip.className = "date-chip date-chip--done";
+      doneChip.textContent = `完成于 ${formatTimestamp(todo.completedAt)}`;
+      meta.append(doneChip);
+    }
+
+    main.append(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "task__actions";
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "task__tool task__edit";
+    edit.setAttribute("aria-label", `编辑「${todo.title}」`);
+    edit.setAttribute("title", "编辑任务");
+    edit.innerHTML = PENCIL_ICON;
+    edit.addEventListener("click", () => openTaskDialog(todo));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "task__tool task__delete";
+    remove.setAttribute("aria-label", `删除「${todo.title}」`);
+    remove.setAttribute("title", "删除任务");
+    remove.innerHTML = TRASH_ICON;
+    remove.addEventListener("click", () => deleteTodo(todo.id));
+
+    actions.append(edit, remove);
+    item.append(checkLabel, main, actions);
+    return item;
+  }
+
+  function captureFocus() {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !active.closest) return null;
+    const task = active.closest(".task");
+    if (!task) return null;
+    let selector = null;
+    if (active.classList.contains("task__checkbox")) selector = ".task__checkbox";
+    else if (active.classList.contains("task__edit")) selector = ".task__edit";
+    else if (active.classList.contains("task__delete")) selector = ".task__delete";
+    return selector ? { id: task.dataset.id, selector } : null;
+  }
+
+  function restoreFocus(focusState) {
+    if (!focusState) return;
+    const target = document.querySelector(
+      `.task[data-id="${CSS.escape(focusState.id)}"] ${focusState.selector}`,
+    );
+    if (target) target.focus();
+  }
+
+  function render() {
+    const counts = viewCounts();
+
+    for (const element of els.navCounts) {
+      element.textContent = String(counts[element.dataset.viewCount] ?? 0);
+    }
+    const overdueCount = document.querySelector('[data-view-count="overdue"]');
+    if (overdueCount) overdueCount.classList.toggle("nav__count--danger", counts.overdue > 0);
+
+    for (const button of els.navItems) {
+      const active = button.dataset.view === state.view;
+      button.classList.toggle("is-active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    }
+
+    const doneToday = completedTodayTasks();
+    const todayTotal = counts.today + doneToday.length;
+    const percent = todayTotal === 0 ? 0 : Math.round((doneToday.length / todayTotal) * 100);
+    els.progressText.textContent = `${doneToday.length} / ${todayTotal}`;
+    els.progressFill.style.width = `${percent}%`;
+    els.progressTrack.setAttribute("aria-valuenow", String(percent));
+
+    const meta = VIEW_META[state.view];
+    els.eyebrow.textContent = meta.eyebrow;
+    els.title.textContent = meta.title;
+    els.subtitle.textContent = subtitleForView(counts);
+    document.title = `${meta.title} · 今日待办`;
+
+    const visible = sortForView(viewTasks(state.view).filter(matchesQuery), state.view);
+    const focusState = captureFocus();
+    els.list.replaceChildren(...visible.map((todo) => createTask(todo, state.view)));
+    els.empty.hidden = visible.length > 0;
+    if (visible.length === 0) {
+      const copy = emptyCopyFor(state.view);
+      els.emptyTitle.textContent = copy.title;
+      els.emptyText.textContent = copy.text;
+    }
+
+    els.listCount.textContent = state.query.trim() ? `找到 ${visible.length} 项` : `共 ${visible.length} 项`;
+    els.clearCompleted.hidden = !(state.view === "completed" && counts.completed > 0 && !state.query.trim());
+
+    if (state.view === "today") {
+      const done = doneToday.filter(matchesQuery).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+      els.todayCompleted.hidden = done.length === 0;
+      els.todayCompletedCount.textContent = String(done.length);
+      els.todayCompletedList.replaceChildren(...done.map((todo) => createTask(todo, "today")));
+    } else {
+      els.todayCompleted.hidden = true;
+    }
+
+    restoreFocus(focusState);
+  }
+
   function announce(message) {
     els.status.textContent = "";
     window.requestAnimationFrame(() => {
@@ -150,262 +562,16 @@
     });
   }
 
-  function setToday() {
-    const now = new Date();
-    const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(now);
-    els.today.textContent = `${now.getMonth() + 1}月${now.getDate()}日 · ${weekday}`;
-  }
-
-  function matchesQuery(todo) {
-    const query = state.query.trim().toLowerCase();
-    return query === "" || todo.title.toLowerCase().includes(query);
-  }
-
-  function visibleTodos() {
-    let list = state.todos;
-    if (state.filter === "active") list = list.filter((todo) => !todo.done);
-    else if (state.filter === "completed") list = list.filter((todo) => todo.done);
-    if (state.query.trim()) list = list.filter(matchesQuery);
-    return list;
-  }
-
-  function focusSelectorFor(element) {
-    if (!element || !element.classList) return null;
-    if (element.classList.contains("todo-item__drag")) return ".todo-item__drag";
-    if (element.classList.contains("todo-item__delete")) return ".todo-item__delete";
-    if (element.classList.contains("todo-item__edit")) return ".todo-item__edit";
-    if (element.classList.contains("todo-item__checkbox")) return ".todo-item__checkbox";
-    return null;
-  }
-
-  function createItem(todo) {
-    const item = document.createElement("li");
-    item.className = "todo-item";
-    item.dataset.id = todo.id;
-    if (todo.done) item.classList.add("is-done");
-    const editing = state.editingId === todo.id;
-    if (editing) item.classList.add("is-editing");
-
-    const drag = document.createElement("button");
-    drag.type = "button";
-    drag.className = "todo-item__drag";
-    drag.setAttribute("aria-label", `拖动排序「${todo.title}」`);
-    drag.setAttribute("title", "拖动排序；聚焦后可用 ↑ ↓ 移动");
-    drag.innerHTML = GRIP_ICON;
-    drag.addEventListener("keydown", (event) => {
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-      event.preventDefault();
-      moveTodo(todo.id, event.key === "ArrowUp" ? -1 : 1);
-    });
-
-    const check = document.createElement("label");
-    check.className = "todo-item__check";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "todo-item__checkbox";
-    checkbox.checked = todo.done;
-    checkbox.disabled = editing;
-    checkbox.setAttribute("aria-label", `标记「${todo.title}」为${todo.done ? "未完成" : "已完成"}`);
-    checkbox.addEventListener("change", () => toggleTodo(todo.id));
-
-    const box = document.createElement("span");
-    box.className = "todo-item__box";
-    box.setAttribute("aria-hidden", "true");
-
-    check.append(checkbox, box);
-
-    const content = document.createElement("div");
-    content.className = "todo-item__content";
-
-    if (editing) {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "todo-item__edit-input";
-      input.value = todo.title;
-      input.maxLength = 200;
-      input.setAttribute("aria-label", "编辑待办内容");
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          event.stopPropagation();
-          commitEdit(true, true);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          commitEdit(false, true);
-        }
-      });
-      input.addEventListener("blur", () => commitEdit(true, false));
-      content.append(input);
-    } else {
-      const title = document.createElement("span");
-      title.className = "todo-item__title";
-      title.textContent = todo.title;
-      title.addEventListener("dblclick", () => startEdit(todo.id));
-      content.append(title);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "todo-item__actions";
-
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "todo-item__tool todo-item__edit";
-    edit.setAttribute("aria-label", `编辑「${todo.title}」`);
-    edit.setAttribute("title", "编辑");
-    edit.innerHTML = PENCIL_ICON;
-    edit.addEventListener("click", () => startEdit(todo.id));
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "todo-item__tool todo-item__delete";
-    remove.setAttribute("aria-label", `删除「${todo.title}」`);
-    remove.setAttribute("title", "删除");
-    remove.innerHTML = TRASH_ICON;
-    remove.addEventListener("click", () => deleteTodo(todo.id));
-
-    actions.append(edit, remove);
-
-    item.append(drag, check, content, actions);
-    return item;
-  }
-
-  function render() {
-    const { todos, filter } = state;
-    const total = todos.length;
-    const done = todos.filter((todo) => todo.done).length;
-    const active = total - done;
-    const visible = visibleTodos();
-
-    const activeElement = document.activeElement;
-    const focusedItem = activeElement && activeElement.closest ? activeElement.closest(".todo-item") : null;
-    const focusSelector = focusedItem ? focusSelectorFor(activeElement) : null;
-
-    els.list.replaceChildren(...visible.map(createItem));
-    els.empty.hidden = visible.length > 0;
-
-    const copy = state.query.trim() ? SEARCH_EMPTY : EMPTY_COPY[filter];
-    els.emptyTitle.textContent = copy.title;
-    els.emptyText.textContent = copy.text;
-
-    els.counts.all.textContent = String(total);
-    els.counts.active.textContent = String(active);
-    els.counts.completed.textContent = String(done);
-
-    if (state.query.trim()) {
-      els.summary.textContent = `找到 ${visible.length} 项匹配`;
-    } else if (total === 0) {
-      els.summary.textContent = "还没有待办";
-    } else if (active === 0) {
-      els.summary.textContent = `共 ${total} 项 · 全部完成`;
-    } else {
-      els.summary.textContent = `共 ${total} 项 · 待完成 ${active} 项`;
-    }
-
-    const percent = total === 0 ? 0 : Math.round((done / total) * 100);
-    els.progressRing.style.setProperty("--progress", `${percent * 3.6}deg`);
-    els.progressValue.textContent = `${percent}%`;
-    els.progress.setAttribute("aria-label", `完成进度 ${percent}%`);
-
-    els.clear.disabled = done === 0;
-
-    for (const button of els.filters) {
-      const isActive = button.dataset.filter === filter;
-      button.classList.toggle("is-active", isActive);
-      button.setAttribute("aria-pressed", String(isActive));
-    }
-
-    // 重新渲染列表后把键盘焦点还给原来的控件。
-    if (focusedItem && focusSelector) {
-      const target = els.list.querySelector(
-        `[data-id="${CSS.escape(focusedItem.dataset.id)}"] ${focusSelector}`,
-      );
-      if (target) target.focus();
-    }
-  }
-
-  function addTodo(rawTitle) {
-    const title = rawTitle.trim();
-    if (!title) {
-      els.input.focus();
-      return;
-    }
-    const todo = { id: uid(), title, done: false };
-    state.todos.unshift(todo);
-    saveTodos();
-    render();
-    const node = els.list.querySelector(`[data-id="${CSS.escape(todo.id)}"]`);
-    if (node) node.classList.add("is-new");
-    announce(`已添加「${title}」`);
-  }
+  // ---- 任务操作 ----
 
   function toggleTodo(id) {
     const todo = state.todos.find((item) => item.id === id);
     if (!todo) return;
     todo.done = !todo.done;
+    todo.completedAt = todo.done ? Date.now() : null;
     saveTodos();
     render();
     announce(todo.done ? `已完成「${todo.title}」` : `已恢复「${todo.title}」`);
-  }
-
-  function startEdit(id) {
-    if (state.editingId === id) return;
-    const todo = state.todos.find((item) => item.id === id);
-    if (!todo) return;
-    state.editingId = id;
-    render();
-    const input = els.list.querySelector(".todo-item__edit-input");
-    if (input) {
-      input.focus();
-      input.select();
-    }
-  }
-
-  function commitEdit(save, restoreFocus) {
-    const id = state.editingId;
-    if (!id) return;
-    const input = els.list.querySelector(".todo-item__edit-input");
-    const value = input ? input.value : "";
-    state.editingId = null;
-
-    const todo = state.todos.find((item) => item.id === id);
-    if (save && todo) {
-      const title = value.trim();
-      if (title && title !== todo.title) {
-        todo.title = title;
-        saveTodos();
-        announce(`已更新「${title}」`);
-      }
-    }
-
-    render();
-
-    if (restoreFocus) {
-      const editButton = els.list.querySelector(`[data-id="${CSS.escape(id)}"] .todo-item__edit`);
-      if (editButton) editButton.focus();
-    }
-  }
-
-  function showToast(message) {
-    els.toastText.textContent = message;
-    els.toast.hidden = false;
-    els.toast.classList.remove("is-visible");
-    // 强制回流后再加类，保证每次都能播放出现动画，且不依赖 requestAnimationFrame 的时序。
-    void els.toast.offsetWidth;
-    els.toast.classList.add("is-visible");
-    window.clearTimeout(undoTimer);
-    undoTimer = window.setTimeout(hideToast, TOAST_DURATION);
-  }
-
-  function hideToast() {
-    window.clearTimeout(undoTimer);
-    undoTimer = null;
-    els.toast.classList.remove("is-visible");
-    window.setTimeout(() => {
-      if (!els.toast.classList.contains("is-visible")) els.toast.hidden = true;
-    }, 200);
-    undoState = null;
   }
 
   function deleteTodo(id) {
@@ -450,141 +616,203 @@
     announce("已撤销");
   }
 
-  function applyOrder(orderedIds) {
-    const visibleIds = new Set(orderedIds);
-    const visible = state.todos.filter((todo) => visibleIds.has(todo.id));
-    const byId = new Map(visible.map((todo) => [todo.id, todo]));
-    let index = 0;
-    state.todos = state.todos.map((todo) => (visibleIds.has(todo.id) ? byId.get(orderedIds[index++]) : todo));
-  }
+  // ---- 添加 / 编辑弹窗 ----
 
-  function moveTodo(id, direction) {
-    const visible = visibleTodos();
-    const index = visible.findIndex((todo) => todo.id === id);
-    const target = index + direction;
-    if (index === -1 || target < 0 || target >= visible.length) return;
-    const from = state.todos.indexOf(visible[index]);
-    const to = state.todos.indexOf(visible[target]);
-    [state.todos[from], state.todos[to]] = [state.todos[to], state.todos[from]];
-    saveTodos();
-    render();
-    announce(`已${direction < 0 ? "上移" : "下移"}「${visible[index].title}」`);
-  }
-
-  function setFilter(filter) {
-    if (!FILTERS.includes(filter) || filter === state.filter) return;
-    state.filter = filter;
-    render();
-  }
-
-  function setSearchOpen(open) {
-    state.searchOpen = open;
-    els.searchBar.hidden = !open;
-    els.searchToggle.setAttribute("aria-expanded", String(open));
-    if (open) {
-      els.searchInput.focus();
-    } else {
-      if (state.query) {
-        state.query = "";
-        render();
-      }
-      els.searchInput.value = "";
-      els.searchClear.hidden = true;
+  function defaultDateForView() {
+    switch (state.view) {
+      case "today":
+      case "next7":
+      case "overdue":
+        return dateKey();
+      case "tomorrow":
+        return addDays(dateKey(), 1);
+      default:
+        return "";
     }
   }
 
-  function onSearchInput() {
+  function setPriority(value) {
+    for (const input of els.priorityInputs) {
+      input.checked = input.value === value;
+    }
+  }
+
+  function getPriority() {
+    const checked = els.priorityInputs.find((input) => input.checked);
+    return checked ? checked.value : "medium";
+  }
+
+  function openTaskDialog(todo) {
+    if (els.dialog.open) return;
+    editingId = todo ? todo.id : null;
+    els.dialogTitle.textContent = todo ? "编辑任务" : "新建任务";
+    els.dialogSubmit.textContent = todo ? "保存" : "添加任务";
+    els.titleInput.value = todo ? todo.title : "";
+    els.notesInput.value = todo ? todo.notes : "";
+    els.dateInput.value = todo ? todo.dueDate || "" : defaultDateForView();
+    setPriority(todo ? todo.priority : "medium");
+    els.titleError.hidden = true;
+    els.dialog.showModal();
+    els.titleInput.focus();
+    els.titleInput.select();
+  }
+
+  function closeDialog() {
+    editingId = null;
+    if (els.dialog.open) els.dialog.close();
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    const title = els.titleInput.value.trim();
+    if (!title) {
+      els.titleError.hidden = false;
+      els.titleInput.focus();
+      return;
+    }
+    els.titleError.hidden = true;
+
+    const data = {
+      title,
+      notes: els.notesInput.value.trim(),
+      dueDate: els.dateInput.value || null,
+      priority: getPriority(),
+    };
+
+    const editedId = editingId;
+    let addedTodo = null;
+
+    if (editingId) {
+      const todo = state.todos.find((item) => item.id === editingId);
+      if (todo) {
+        Object.assign(todo, data);
+        announce(`已更新「${title}」`);
+      }
+    } else {
+      addedTodo = {
+        id: uid(),
+        ...data,
+        done: false,
+        createdAt: Date.now(),
+        completedAt: null,
+      };
+      state.todos.unshift(addedTodo);
+      state.query = "";
+      els.searchInput.value = "";
+      els.searchClear.hidden = true;
+      announce(`已添加「${title}」`);
+    }
+
+    saveTodos();
+    closeDialog();
+
+    if (addedTodo && !isVisibleInView(addedTodo, state.view)) {
+      state.view = viewForTask(addedTodo);
+    }
+    render();
+
+    if (addedTodo) {
+      els.addTask.focus();
+      els.mainContent.scrollTop = 0;
+    } else if (editedId) {
+      const titleButton = document.querySelector(`.task[data-id="${CSS.escape(editedId)}"] .task__title`);
+      (titleButton || els.addTask).focus();
+    }
+  }
+
+  // ---- Toast / 撤销 ----
+
+  function showToast(message) {
+    els.toastText.textContent = message;
+    els.toast.hidden = false;
+    els.toast.classList.remove("is-visible");
+    void els.toast.offsetWidth;
+    els.toast.classList.add("is-visible");
+    window.clearTimeout(undoTimer);
+    undoTimer = window.setTimeout(hideToast, TOAST_DURATION);
+  }
+
+  function hideToast() {
+    window.clearTimeout(undoTimer);
+    undoTimer = null;
+    els.toast.classList.remove("is-visible");
+    window.setTimeout(() => {
+      if (!els.toast.classList.contains("is-visible")) els.toast.hidden = true;
+    }, 200);
+    undoState = null;
+  }
+
+  // ---- 事件绑定 ----
+
+  els.dialogForm.addEventListener("submit", handleSubmit);
+  els.dialogClose.addEventListener("click", closeDialog);
+  els.dialogCancel.addEventListener("click", closeDialog);
+  els.dialog.addEventListener("close", () => {
+    editingId = null;
+  });
+  els.dialog.addEventListener("click", (event) => {
+    if (event.target === els.dialog) els.dialog.close();
+  });
+  els.titleInput.addEventListener("input", () => {
+    if (els.titleInput.value.trim()) els.titleError.hidden = true;
+  });
+
+  for (const button of els.quickDateButtons) {
+    button.addEventListener("click", () => {
+      const kind = button.dataset.quickDate;
+      if (kind === "today") els.dateInput.value = dateKey();
+      else if (kind === "tomorrow") els.dateInput.value = addDays(dateKey(), 1);
+      else els.dateInput.value = "";
+    });
+  }
+
+  els.addTask.addEventListener("click", () => openTaskDialog());
+
+  for (const button of els.navItems) {
+    button.addEventListener("click", () => {
+      const view = button.dataset.view;
+      if (!VIEW_META[view]) return;
+      if (view === state.view) {
+        if (state.query) {
+          state.query = "";
+          els.searchInput.value = "";
+          els.searchClear.hidden = true;
+          render();
+        }
+        return;
+      }
+      state.view = view;
+      state.query = "";
+      els.searchInput.value = "";
+      els.searchClear.hidden = true;
+      els.mainContent.scrollTop = 0;
+      render();
+    });
+  }
+
+  els.searchInput.addEventListener("input", () => {
     state.query = els.searchInput.value;
     els.searchClear.hidden = els.searchInput.value.length === 0;
     render();
-  }
-
-  function isTypingTarget(target) {
-    if (!(target instanceof HTMLElement)) return false;
-    if (target.isContentEditable) return true;
-    if (target.tagName === "TEXTAREA") return true;
-    if (target.tagName !== "INPUT") return false;
-    return ["text", "search", "email", "number", "password", "tel", "url"].includes(target.type);
-  }
-
-  function onPointerDown(event) {
-    const handle = event.target.closest ? event.target.closest(".todo-item__drag") : null;
-    if (!handle) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    const item = handle.closest(".todo-item");
-    if (!item) return;
-    dragState = { item, pointerId: event.pointerId, startY: event.clientY, active: false };
-    if (handle.setPointerCapture) {
-      try {
-        handle.setPointerCapture(event.pointerId);
-      } catch (error) {
-        // 某些浏览器在指针已释放时会抛错，忽略即可。
-      }
-    }
-    event.preventDefault();
-  }
-
-  function onPointerMove(event) {
-    if (!dragState || event.pointerId !== dragState.pointerId) return;
-    const delta = event.clientY - dragState.startY;
-    if (!dragState.active) {
-      if (Math.abs(delta) < DRAG_THRESHOLD) return;
-      dragState.active = true;
-      dragState.item.classList.add("is-dragging");
-      document.body.classList.add("is-sorting");
-    }
-    event.preventDefault();
-    const items = Array.from(els.list.querySelectorAll(".todo-item")).filter((item) => item !== dragState.item);
-    const reference =
-      items.find((item) => {
-        const rect = item.getBoundingClientRect();
-        return event.clientY < rect.top + rect.height / 2;
-      }) || null;
-    if (reference) els.list.insertBefore(dragState.item, reference);
-    else els.list.appendChild(dragState.item);
-  }
-
-  function onPointerUp(event) {
-    if (!dragState || (event && event.pointerId !== dragState.pointerId)) return;
-    const { item, active } = dragState;
-    dragState = null;
-    item.classList.remove("is-dragging");
-    document.body.classList.remove("is-sorting");
-    if (!active) return;
-    const orderedIds = Array.from(els.list.children).map((child) => child.dataset.id);
-    applyOrder(orderedIds);
-    saveTodos();
-    render();
-    announce("已调整排序");
-  }
-
-  els.form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    addTodo(els.input.value);
-    els.input.value = "";
-    els.input.focus();
   });
 
-  for (const button of els.filters) {
-    button.addEventListener("click", () => setFilter(button.dataset.filter));
-  }
-
-  els.clear.addEventListener("click", clearCompleted);
-
-  els.searchToggle.addEventListener("click", () => setSearchOpen(!state.searchOpen));
-  els.searchInput.addEventListener("input", onSearchInput);
   els.searchInput.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    setSearchOpen(false);
-    els.searchToggle.focus();
+    if (state.query) clearSearch();
+    els.searchInput.blur();
   });
-  els.searchClear.addEventListener("click", () => {
-    els.searchInput.value = "";
+
+  function clearSearch() {
     state.query = "";
+    els.searchInput.value = "";
     els.searchClear.hidden = true;
     render();
+  }
+
+  els.searchClear.addEventListener("click", () => {
+    clearSearch();
     els.searchInput.focus();
   });
 
@@ -593,22 +821,13 @@
     applyTheme(current === "dark" ? "light" : "dark", true);
   });
 
+  els.clearCompleted.addEventListener("click", clearCompleted);
   els.toastUndo.addEventListener("click", undoLast);
 
-  els.list.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("pointermove", onPointerMove, { passive: false });
-  window.addEventListener("pointerup", onPointerUp);
-  window.addEventListener("pointercancel", onPointerUp);
-
   document.addEventListener("keydown", (event) => {
-    if (event.key === "/" && !isTypingTarget(event.target)) {
-      event.preventDefault();
-      if (!state.searchOpen) setSearchOpen(true);
-      else els.searchInput.focus();
-      return;
-    }
+    if (event.defaultPrevented) return;
 
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !isTypingTarget(event.target)) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !isTypingTarget(event.target) && !els.dialog.open) {
       if (undoState) {
         event.preventDefault();
         undoLast();
@@ -616,19 +835,31 @@
       return;
     }
 
-    if (event.key === "Escape") {
-      if (state.searchOpen) {
-        setSearchOpen(false);
-        els.searchToggle.focus();
-      }
-      if (els.input.value) {
-        els.input.value = "";
-        els.input.blur();
-      }
+    if (event.key === "/" && !isTypingTarget(event.target) && !els.dialog.open) {
+      event.preventDefault();
+      els.searchInput.focus();
+      return;
+    }
+
+    if (
+      event.key.toLowerCase() === "n" &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !isTypingTarget(event.target) &&
+      !els.dialog.open
+    ) {
+      event.preventDefault();
+      openTaskDialog();
+      return;
+    }
+
+    if (event.key === "Escape" && !els.dialog.open && state.query) {
+      clearSearch();
+      els.searchInput.blur();
     }
   });
 
   initTheme();
-  setToday();
   render();
 })();
